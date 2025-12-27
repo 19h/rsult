@@ -1,395 +1,305 @@
 import { Option, None, Some } from './option';
 
-export type Result<T, E> =
-    ResultOk<T, E> | ResultErr<T, E>;
+// ============================================================================
+// Type-Level Utilities
+// ============================================================================
+
+/** Unique brand symbols for nominal typing */
+declare const OkBrand: unique symbol;
+declare const ErrBrand: unique symbol;
+
+/** Extract the Ok type from a Result */
+export type UnwrapOk<R> = R extends Result<infer T, any> ? T : never;
+
+/** Extract the Err type from a Result */
+export type UnwrapErr<R> = R extends Result<any, infer E> ? E : never;
+
+/** Unwrap nested Result types for flatten() */
+export type FlattenResult<T, E> = T extends Result<infer U, infer E2>
+    ? Result<U, E | E2>
+    : Result<T, E>;
+
+/** Type-level check for nested Results */
+export type IsNestedResult<T> = T extends Result<any, any> ? true : false;
+
+// ============================================================================
+// Result Type Definition
+// ============================================================================
+
+/**
+ * A discriminated union representing either success (Ok) or failure (Err).
+ *
+ * @typeParam T - The success value type
+ * @typeParam E - The error value type
+ */
+export type Result<T, E> = ResultOk<T, E> | ResultErr<T, E>;
+
+// ============================================================================
+// Core Interfaces
+// ============================================================================
 
 export interface IResultCore<T, E> {
     /**
-     * Checks if the result is an instance of `ResultOk`.
-     * @returns true if the result is `ResultOk`, otherwise false.
+     * Returns `true` if the result is `Ok`.
      *
-     * Usage Example:
-     * const result = Ok(5);
-     * if (result.is_ok()) {
-     *   console.log("Result is Ok");
-     * }
+     * This is a type guard that narrows the type to `ResultOk<T, E>`.
      */
     is_ok(): this is ResultOk<T, E>;
 
     /**
-     * Checks if the result is an instance of `ResultErr`.
-     * @returns true if the result is `ResultErr`, otherwise false.
+     * Returns `true` if the result is `Err`.
      *
-     * Usage Example:
-     * const result = Err(new Error("Error"));
-     * if (result.is_err()) {
-     *   console.log("Result is Err");
-     * }
+     * This is a type guard that narrows the type to `ResultErr<T, E>`.
      */
     is_err(): this is ResultErr<T, E>;
 
     /**
-     * Retrieves the value from `ResultOk`, wrapped in an `Option`.
-     * @returns `Some` containing the value if the result is `ResultOk`, otherwise `None`.
+     * Converts from `Result<T, E>` to `Option<T>`.
      *
-     * Usage Example:
-     * const result = Ok(5);
-     * const value = result.ok();
-     * if (value.is_some()) {
-     *   console.log("Value:", value.unwrap());
-     * }
+     * Returns `Some(value)` if `Ok`, otherwise `None`.
      */
     ok(): Option<T>;
 
     /**
-     * Retrieves the error from `ResultErr`, wrapped in an `Option`.
-     * @returns `Some` containing the error if the result is `ResultErr`, otherwise `None`.
+     * Converts from `Result<T, E>` to `Option<E>`.
      *
-     * Usage Example:
-     * const result = Err(new Error("Error"));
-     * const error = result.err();
-     * if (error.is_some()) {
-     *   console.log("Error:", error.unwrap());
-     * }
+     * Returns `Some(error)` if `Err`, otherwise `None`.
      */
     err(): Option<E>;
 
     /**
-     * Returns the contained `ResultOk` value, but throws an error with a provided message if
-     * the result is a `ResultErr`.
-     * @param msg The message to throw with if the result is an error.
-     * @returns The contained `ResultOk` value.
+     * Returns the contained `Ok` value, or throws with the provided message.
      *
-     * Usage Example:
-     * const result = Ok(5);
-     * console.log(result.expect("This should not fail"));
+     * @throws Error with `msg` if this is `Err`
      */
     expect(msg: string): T;
 
     /**
-     * Unwraps a `ResultOk`, yielding the contained value.
-     * @returns The `ResultOk` value.
-     * @throws Throws if the result is `ResultErr`.
+     * Returns the contained `Ok` value, or throws.
      *
-     * Usage Example:
-     * const result = Ok(5);
-     * console.log(result.unwrap());
+     * @throws Error if this is `Err`
      */
     unwrap(): T;
 
     /**
-     * Returns the contained `ResultErr` error, but throws an error with a provided message if
-     * the result is a `ResultOk`.
-     * @param msg The message to throw with if the result is Ok.
-     * @returns The contained `ResultErr` error.
+     * Returns the contained `Err` value, or throws with the provided message.
      *
-     * Usage Example:
-     * const result = Err(new Error("Failure"));
-     * console.log(result.expect_err("Expected an error"));
+     * @throws Error with `msg` if this is `Ok`
      */
     expect_err(msg: string): E;
 
     /**
-     * Unwraps a `ResultErr`, yielding the contained error.
-     * @returns The `ResultErr` error.
-     * @throws Throws if the result is `ResultOk`.
+     * Returns the contained `Err` value, or throws.
      *
-     * Usage Example:
-     * const result = Err(new Error("Failure"));
-     * console.log(result.unwrap_err());
+     * @throws Error if this is `Ok`
      */
     unwrap_err(): E;
 
     /**
-     * Converts from `IResultCore<T, E>` to `T`.
-     * @returns The contained `ResultOk` value.
-     * @throws Throws if the result is `ResultErr`.
+     * Returns the contained `Ok` value. Identical to `unwrap()`.
      *
-     * Usage Example:
-     * const result = Ok(5);
-     * console.log(result.into_ok());
+     * @throws Error if this is `Err`
      */
     into_ok(): T;
 
     /**
-     * Converts from `IResultCore<T, E>` to `E`.
-     * @returns The contained `ResultErr` error.
-     * @throws Throws if the result is `ResultOk`.
+     * Returns the contained `Err` value. Identical to `unwrap_err()`.
      *
-     * Usage Example:
-     * const result = Err(new Error("Failure"));
-     * console.log(result.into_err());
+     * @throws Error if this is `Ok`
      */
     into_err(): E;
-
-    /**
-     * Converts between different forms of `Result`, allowing the error type to be widened.
-     * 
-     * If called on a `ResultOk<T, E>`, it will return a `Result<T, never>`, effectively discarding 
-     * the error type. This is useful when you want to use the `Result` in a context that expects
-     * a `Result` with a specific error type, but you know that the `Result` is an `Ok` variant.
-     *
-     * If called on a `ResultErr<T, E>`, it will return a `Result<never, E>`, effectively discarding 
-     * the value type. This is useful when you want to use the `Result` in a context that expects
-     * a `Result` with a specific value type, but you know that the `Result` is an `Err` variant. 
-     * 
-     * This is particularly useful when trying to forward a ResultErr returned by a function whose
-     * error type overlaps with the returned error type of the current function, but whose value type
-     * does not.
-     *
-     * Usage Example:
-     * const result: Result<number, Error> = Ok<number, Error>(5);
-     * const transmuted: Result<number, never> = result.transmute();
-     *
-     * const result: Result<number, Error> = Err<number, Error>(new Error("Failure"));
-     * const transmuted: Result<never, Error> = result.transmute();
-     */
-    transmute(): Result<T, never> | Result<never, E>;
 }
 
 export interface IResultExt<T, E> extends IResultCore<T, E> {
     /**
-     * Checks if the result is Ok and the contained value passes a specified condition.
-     * @param f A predicate to apply to the contained value if the result is Ok.
-     * @returns true if the result is Ok and the predicate returns true, otherwise false.
-     *
-     * Usage Examples:
-     * const result = Ok(5);
-     * if (result.is_ok_and(x => x > 3)) {
-     *   console.log("Result is Ok and greater than 3");
-     * }
-     *
-     * const result = Ok(2);
-     * if (!result.is_ok_and(x => x > 3)) {
-     *   console.log("Result is not Ok or not greater than 3");
-     * }
+     * Returns `true` if `Ok` and the value satisfies the predicate.
      */
     is_ok_and(f: (value: T) => boolean): boolean;
 
     /**
-     * Checks if the result is Err and the contained error passes a specified condition.
-     * @param f A predicate to apply to the contained error if the result is Err.
-     * @returns true if the result is Err and the predicate returns true, otherwise false.
-     *
-     * Usage Examples:
-     * const result = Err(new Error("Network failure"));
-     * if (result.is_err_and(e => e.message.includes("Network"))) {
-     *   console.log("Network error occurred");
-     * }
+     * Returns `true` if `Err` and the error satisfies the predicate.
      */
     is_err_and(f: (value: E) => boolean): boolean;
 
     /**
-     * Transforms the result via a mapping function if it is Ok.
-     * @param fn A function to transform the Ok value.
-     * @returns A new Result where the Ok value has been transformed.
-     *
-     * Usage Example:
-     * const result = Ok(5);
-     * const mapped = result.map(x => x * 2);
-     *
-     * const result = Err("Error");
-     * const mapped = result.map(x => x * 2); // remains Err
+     * Maps a `Result<T, E>` to `Result<U, E>` by applying `fn` to the `Ok` value.
      */
     map<U>(fn: (arg: T) => U): Result<U, E>;
 
     /**
-     * Transforms the result via a mapping function if it is Ok, otherwise returns a default value.
-     * @param defaultVal A default value to return if the result is Err.
-     * @param f A function to transform the Ok value.
-     * @returns The transformed Ok value or the default value.
-     *
-     * Usage Example:
-     * const result = Ok(5);
-     * const value = result.map_or(0, x => x * 2);
-     *
-     * const result = Err("Error");
-     * const value = result.map_or(0, x => x * 2); // 0
+     * Returns the provided default (if `Err`), or applies `fn` to the `Ok` value.
      */
     map_or<U>(defaultVal: U, f: (arg: T) => U): U;
 
     /**
-     * Transforms the result via a mapping function if it is Ok, otherwise computes a default value using a function.
-     * @param defaultFunc A function to compute a default value if the result is Err.
-     * @param f A function to transform the Ok value.
-     * @returns The transformed Ok value or the computed default value.
-     *
-     * Usage Example:
-     * const result = Ok(5);
-     * const value = result.map_or_else(() => 0, x => x * 2);
-     *
-     * const result = Err("Error");
-     * const value = result.map_or_else(() => 0, x => x * 2); // 0
+     * Computes a default (if `Err`), or applies `fn` to the `Ok` value.
      */
     map_or_else<U>(defaultFunc: (err: E) => U, f: (arg: T) => U): U;
 
     /**
-     * Maps a `Result<T, E>` to `Result<T, U>` by applying a function to a contained `Err` value, leaving an `Ok` value untouched.
-     * @param fn A function to transform the Err value.
-     * @returns A new Result where the Err has been transformed.
-     *
-     * Usage Example:
-     * const result = Err("Error");
-     * const mappedErr = result.map_err(e => new Error(e));
+     * Maps a `Result<T, E>` to `Result<T, U>` by applying `fn` to the `Err` value.
      */
     map_err<U>(fn: (arg: E) => U): Result<T, U>;
 
     /**
-     * Applies a function to the contained value (if Ok), then returns the unmodified Result.
-     * @param f A function to apply to the Ok value.
-     * @returns The original Result.
-     *
-     * Usage Example:
-     * const result = Ok(5);
-     * result.inspect(x => console.log(`Value: ${x}`));
+     * Calls `fn` with the `Ok` value if present, then returns the original result.
      */
-    inspect(f: (val: T) => void): Result<T, E>;
+    inspect(f: (val: T) => void): this;
 
     /**
-     * Applies a function to the contained error (if Err), then returns the unmodified Result.
-     * @param f A function to apply to the Err value.
-     * @returns The original Result.
-     *
-     * Usage Example:
-     * const result = Err("Error");
-     * result.inspect_err(e => console.log(`Error: ${e}`));
+     * Calls `fn` with the `Err` value if present, then returns the original result.
      */
-    inspect_err(f: (val: E) => void): Result<T, E>;
+    inspect_err(f: (val: E) => void): this;
 
     /**
-     * Returns `res` if the result is Ok, otherwise returns the Err value of `self`.
-     * @param res The result to return if `self` is Ok.
-     * @returns Either `res` or the original Err.
-     *
-     * Usage Example:
-     * const result = Ok(5);
-     * const other = Ok("Hello");
-     * const finalResult = result.and(other); // Ok("Hello")
+     * Returns `res` if `Ok`, otherwise returns the `Err` value of `self`.
      */
     and<U>(res: Result<U, E>): Result<U, E>;
 
     /**
-     * Calls `fn` if the result is Ok, otherwise returns the Err value of `self`.
-     * @param fn A function to apply to the Ok value.
-     * @returns The result of `fn` if the original result is Ok, otherwise the Err.
-     *
-     * Usage Example:
-     * const result = Ok(5);
-     * const finalResult = result.and_then(x => Ok(x * 2)); // Ok(10)
+     * Calls `fn` if `Ok`, otherwise returns the `Err` value of `self`.
+     * This is the monadic bind operation (flatMap).
      */
     and_then<U>(fn: (arg: T) => Result<U, E>): Result<U, E>;
 
     /**
-     * Returns `res` if the result is Err, otherwise returns the Ok value of `self`.
-     * @param res The result to return if `self` is Err.
-     * @returns Either `res` or the original Ok.
-     *
-     * Usage Example:
-     * const result = Err("Error");
-     * const other = Ok(5);
-     * const finalResult = result.or(other); // Ok(5)
+     * Returns `res` if `Err`, otherwise returns the `Ok` value of `self`.
      */
-    or<U>(res: Result<U, E>): Result<U, E>;
+    or<F>(res: Result<T, F>): Result<T, F>;
 
     /**
-     * Calls `fn` if the result is Err, otherwise returns the Ok value of `self`.
-     * @param fn A function to apply to the Err value.
-     * @returns The result of `fn` if the original result is Err, otherwise the Ok.
-     *
-     * Usage Example:
-     * const result = Err("Error");
-     * const finalResult = result.or_else(e => Ok(`Handled ${e}`)); // Ok("Handled Error")
+     * Calls `fn` if `Err`, otherwise returns the `Ok` value of `self`.
      */
-    or_else<U>(fn: (arg: E) => Result<T, U>): Result<T, U>;
+    or_else<F>(fn: (arg: E) => Result<T, F>): Result<T, F>;
 
     /**
-     * Returns the contained Ok value or a provided default.
-     * @param defaultVal The default value to return if the result is Err.
-     * @returns The Ok value or the default.
-     *
-     * Usage Example:
-     * const result = Ok(5);
-     * console.log(result.unwrap_or(0)); // 5
-     *
-     * const result = Err("Error");
-     * console.log(result.unwrap_or(0)); // 0
+     * Returns the contained `Ok` value or the provided default.
      */
     unwrap_or(defaultVal: T): T;
 
     /**
-     * Returns the contained Ok value or computes it from a function.
-     * @param fn A function to compute the default value if the result is Err.
-     * @returns The Ok value or the computed one.
-     *
-     * Usage Example:
-     * const result = Err("Error");
-     * console.log(result.unwrap_or_else(() => 5)); // 5
+     * Returns the contained `Ok` value or computes it from `fn`.
      */
     unwrap_or_else(fn: (arg: E) => T): T;
 }
 
-type UnwrapResult<T> = T extends Result<infer U, any> ? U : T;
-
 export interface IResultIteration<T, E> extends IResultCore<T, E> {
     /**
-     * Returns an iterator over the potentially contained value.
-     * @returns An iterator which yields the contained value if it is `ResultOk<T, E>`.
-     *
-     * Usage Example:
-     * const okResult = Ok(5);
-     * for (const value of okResult.iter()) {
-     *   console.log(value); // prints 5
-     * }
-     *
-     * const errResult = Err(new Error("error"));
-     * for (const value of errResult.iter()) {
-     *   // This block will not be executed.
-     * }
+     * Returns an iterator over the possibly contained `Ok` value.
+     * Yields one element if `Ok`, zero if `Err`.
      */
     iter(): IterableIterator<T>;
 
     /**
-     * Flattens a nested `Result` if the contained value is itself a `Result`.
-     * @returns A single-layer `Result`, by stripping one layer of `Result` container.
+     * Flattens a `Result<Result<U, E2>, E>` into `Result<U, E | E2>`.
      *
-     * Usage Example:
-     * const nestedOk = Ok(Ok(5));
-     * const flattened = nestedOk.flatten(); // Results in Ok(5)
-     *
-     * const nestedErr = Ok(Err(new Error("error")));
-     * const flattenedError = nestedErr.flatten(); // Results in Err(new Error("error"))
+     * If `T` is not a `Result`, returns `Result<T, E>` unchanged.
      */
-    flatten(): Result<UnwrapResult<T>, E>;
+    flatten(): FlattenResult<T, E>;
+
+    /**
+     * Transposes a `Result` of an `Option` into an `Option` of a `Result`.
+     *
+     * - `Ok(None)` → `None`
+     * - `Ok(Some(v))` → `Some(Ok(v))`
+     * - `Err(e)` → `Some(Err(e))`
+     *
+     * @example
+     * ```typescript
+     * Ok(Some(5)).transpose()   // Some(Ok(5))
+     * Ok(None()).transpose()    // None
+     * Err("e").transpose()      // Some(Err("e"))
+     * ```
+     */
+    transpose(): T extends { _tag: 'Some'; value: infer U }
+        ? { _tag: 'Some'; value: Result<U, E> }
+        : T extends { _tag: 'None' }
+        ? { _tag: 'None' }
+        : { _tag: 'Some' | 'None'; value?: Result<unknown, E> };
+}
+
+/**
+ * Methods specific to `ResultOk` that provide more precise types.
+ */
+export interface IResultOkSpecific<T, E> {
+    /**
+     * Type-safe transmute that narrows the error type to `never`.
+     *
+     * Since this is `Ok`, there's no error, so `E` can safely become `never`.
+     */
+    transmute(): ResultOk<T, never>;
+}
+
+/**
+ * Methods specific to `ResultErr` that provide more precise types.
+ */
+export interface IResultErrSpecific<T, E> {
+    /**
+     * Type-safe transmute that narrows the value type to `never`.
+     *
+     * Since this is `Err`, there's no value, so `T` can safely become `never`.
+     */
+    transmute(): ResultErr<never, E>;
 }
 
 export interface IResult<T, E> extends
     IResultCore<T, E>,
     IResultExt<T, E>,
-    IResultIteration<T, E> {}
+    IResultIteration<T, E> {
+    /**
+     * Converts between different Result types by narrowing phantom types.
+     *
+     * - On `Ok<T, E>`: returns `Ok<T, never>` (error type becomes `never`)
+     * - On `Err<T, E>`: returns `Err<never, E>` (value type becomes `never`)
+     */
+    transmute(): ResultOk<T, never> | ResultErr<never, E>;
+}
 
-export const isResultOk = <T, E>(val: any): val is ResultOk<T, E> => {
+// ============================================================================
+// Type Guards
+// ============================================================================
+
+/**
+ * Type guard to check if a value is `ResultOk`.
+ */
+export const isResultOk = <T, E>(val: Result<T, E>): val is ResultOk<T, E> => {
     return val instanceof ResultOk;
-}
+};
 
-export const isResultErr = <T, E>(val: any): val is ResultErr<T, E> => {
+/**
+ * Type guard to check if a value is `ResultErr`.
+ */
+export const isResultErr = <T, E>(val: Result<T, E>): val is ResultErr<T, E> => {
     return val instanceof ResultErr;
-}
+};
 
-export class ResultOk<T, E> implements IResult<T, E> {
-    private readonly _tag = 'Ok' as const;
-    // @ts-ignore
-    private readonly _T: T;
-    // @ts-ignore
-    private readonly _E: E;
+// ============================================================================
+// ResultOk Implementation
+// ============================================================================
 
-    constructor(readonly value: T) {
-    }
+/**
+ * The `Ok` variant of `Result<T, E>`, representing success with a value of type `T`.
+ *
+ * Uses branded typing for nominal type safety.
+ *
+ * @typeParam T - The success value type
+ * @typeParam E - The error type (phantom - not used at runtime in Ok)
+ */
+export class ResultOk<out T, out E = never> implements IResult<T, E>, IResultOkSpecific<T, E> {
+    /** Brand for nominal typing - ensures ResultOk is distinct from ResultErr */
+    declare readonly [OkBrand]: T;
 
+    /** Discriminant tag for runtime type checking */
+    readonly _tag = 'Ok' as const;
+
+    constructor(readonly value: T) {}
+
+    // Type guards
     is_ok(): this is ResultOk<T, E> {
         return true;
     }
 
-    is_err(): this is never {
+    is_err(): this is ResultErr<T, E> {
         return false;
     }
 
@@ -397,10 +307,11 @@ export class ResultOk<T, E> implements IResult<T, E> {
         return f(this.value);
     }
 
-    is_err_and(_f: (value: E) => boolean): boolean {
+    is_err_and(_f: (value: E) => boolean): false {
         return false;
     }
 
+    // Conversion to Option
     ok(): Option<T> {
         return Some(this.value);
     }
@@ -409,8 +320,9 @@ export class ResultOk<T, E> implements IResult<T, E> {
         return None();
     }
 
-    map<U>(fn: (arg: T) => U): Result<U, E> {
-        return new ResultOk<U, E>(fn(this.value));
+    // Transformations
+    map<U>(fn: (arg: T) => U): ResultOk<U, E> {
+        return new ResultOk(fn(this.value));
     }
 
     map_or<U>(_d: U, f: (arg: T) => U): U {
@@ -421,24 +333,31 @@ export class ResultOk<T, E> implements IResult<T, E> {
         return f(this.value);
     }
 
-    map_err<U>(_fn: (arg: E) => U): Result<T, U> {
-        return this as any;
+    /**
+     * On Ok, map_err is a no-op that changes only the error type parameter.
+     * We construct a new ResultOk with the same value but updated type parameter.
+     */
+    map_err<U>(_fn: (arg: E) => U): ResultOk<T, U> {
+        // Type-safe: we're Ok, so E is phantom. Creating new instance preserves type safety.
+        return new ResultOk<T, U>(this.value);
     }
 
-    inspect(f: (val: T) => void): Result<T, E> {
+    // Inspection
+    inspect(f: (val: T) => void): this {
         f(this.value);
-
         return this;
     }
 
-    inspect_err(_f: (val: E) => void): Result<T, E> {
+    inspect_err(_f: (val: E) => void): this {
         return this;
     }
 
+    // Iteration
     iter(): IterableIterator<T> {
         return [this.value][Symbol.iterator]();
     }
 
+    // Unwrapping
     expect(_msg: string): T {
         return this.value;
     }
@@ -447,11 +366,7 @@ export class ResultOk<T, E> implements IResult<T, E> {
         return this.value;
     }
 
-    //unwrap_or_default(): T {
-    //    ! not implemented
-    //}
-
-    expect_err(msg: string): E {
+    expect_err(msg: string): never {
         throw new Error(msg);
     }
 
@@ -459,6 +374,7 @@ export class ResultOk<T, E> implements IResult<T, E> {
         throw new Error('Called Result.unwrap_err() on an Ok value: ' + this.value);
     }
 
+    // Combinators
     and<U>(res: Result<U, E>): Result<U, E> {
         return res;
     }
@@ -467,14 +383,21 @@ export class ResultOk<T, E> implements IResult<T, E> {
         return fn(this.value);
     }
 
-    or<U>(_res: Result<U, E>): Result<U, E> {
-        return this as any;
+    /**
+     * On Ok, `or` returns self. We construct a new ResultOk with updated error type.
+     */
+    or<F>(_res: Result<T, F>): ResultOk<T, F> {
+        return new ResultOk<T, F>(this.value);
     }
 
-    or_else<U>(fn: (arg: E) => Result<T, U>): Result<T, U> {
-        return this as any;
+    /**
+     * On Ok, `or_else` returns self. We construct a new ResultOk with updated error type.
+     */
+    or_else<F>(_fn: (arg: E) => Result<T, F>): ResultOk<T, F> {
+        return new ResultOk<T, F>(this.value);
     }
 
+    // Default values
     unwrap_or(_optb: T): T {
         return this.value;
     }
@@ -483,16 +406,16 @@ export class ResultOk<T, E> implements IResult<T, E> {
         return this.value;
     }
 
-    flatten(): Result<UnwrapResult<T>, E> {
-        if (this.value instanceof ResultOk || this.value instanceof ResultErr) {
-            return this.value;
-        } else {
-            // This case should not happen if T is always a Result,
-            // but it's here to satisfy TypeScript's type checker.
-            return new ResultOk<UnwrapResult<T>, E>(this.value as UnwrapResult<T>);
+    // Flattening
+    flatten(): FlattenResult<T, E> {
+        const val = this.value;
+        if (val instanceof ResultOk || val instanceof ResultErr) {
+            return val as FlattenResult<T, E>;
         }
+        return this as unknown as FlattenResult<T, E>;
     }
 
+    // Type narrowing
     into_ok(): T {
         return this.value;
     }
@@ -501,22 +424,49 @@ export class ResultOk<T, E> implements IResult<T, E> {
         throw new Error('Called Result.into_err() on an Ok value: ' + this.value);
     }
 
-    transmute(): Result<T, never> {
-        return this as any;
+    /**
+     * Transmutes to Ok<T, never>, proving there's no error.
+     */
+    transmute(): ResultOk<T, never> {
+        return new ResultOk<T, never>(this.value);
+    }
+
+    /**
+     * Transposes Ok(Option<U>) into Option<Result<U, E>>.
+     */
+    transpose(): any {
+        const option = this.value as { _tag: 'Some' | 'None'; value?: unknown; is_some?(): boolean };
+        if (option._tag === 'Some' || (option.is_some && option.is_some())) {
+            return Some(new ResultOk(option.value));
+        } else {
+            return None();
+        }
     }
 }
 
-export class ResultErr<T, E> implements IResult<T, E> {
-    private readonly _tag: 'Err' = 'Err';
-    // @ts-ignore
-    private readonly _T: T;
-    // @ts-ignore
-    private readonly _E: E;
+// ============================================================================
+// ResultErr Implementation
+// ============================================================================
 
-    constructor(readonly value: E) {
-    }
+/**
+ * The `Err` variant of `Result<T, E>`, representing failure with an error of type `E`.
+ *
+ * Uses branded typing for nominal type safety.
+ *
+ * @typeParam T - The success type (phantom - not used at runtime in Err)
+ * @typeParam E - The error value type
+ */
+export class ResultErr<out T = never, out E = unknown> implements IResult<T, E>, IResultErrSpecific<T, E> {
+    /** Brand for nominal typing - ensures ResultErr is distinct from ResultOk */
+    declare readonly [ErrBrand]: E;
 
-    is_ok(): this is never {
+    /** Discriminant tag for runtime type checking */
+    readonly _tag = 'Err' as const;
+
+    constructor(readonly value: E) {}
+
+    // Type guards
+    is_ok(): this is ResultOk<T, E> {
         return false;
     }
 
@@ -524,7 +474,7 @@ export class ResultErr<T, E> implements IResult<T, E> {
         return true;
     }
 
-    is_ok_and(_f: (value: T) => boolean): boolean {
+    is_ok_and(_f: (value: T) => boolean): false {
         return false;
     }
 
@@ -532,6 +482,7 @@ export class ResultErr<T, E> implements IResult<T, E> {
         return f(this.value);
     }
 
+    // Conversion to Option
     ok(): Option<T> {
         return None();
     }
@@ -540,8 +491,12 @@ export class ResultErr<T, E> implements IResult<T, E> {
         return Some(this.value);
     }
 
-    map<U>(_fn: (arg: T) => U): Result<U, E> {
-        return this as any;
+    // Transformations
+    /**
+     * On Err, map is a no-op that changes only the value type parameter.
+     */
+    map<U>(_fn: (arg: T) => U): ResultErr<U, E> {
+        return new ResultErr<U, E>(this.value);
     }
 
     map_or<U>(d: U, _f: (arg: T) => U): U {
@@ -552,23 +507,26 @@ export class ResultErr<T, E> implements IResult<T, E> {
         return d(this.value);
     }
 
-    map_err<U>(fn: (arg: E) => U): Result<T, U> {
-        return new ResultErr<T, U>(fn(this.value));
+    map_err<U>(fn: (arg: E) => U): ResultErr<T, U> {
+        return new ResultErr(fn(this.value));
     }
 
-    inspect(_f: (val: T) => void): Result<T, E> {
+    // Inspection
+    inspect(_f: (val: T) => void): this {
         return this;
     }
 
-    inspect_err(f: (val: E) => void): Result<T, E> {
+    inspect_err(f: (val: E) => void): this {
         f(this.value);
         return this;
     }
 
+    // Iteration
     iter(): IterableIterator<T> {
         return [][Symbol.iterator]();
     }
 
+    // Unwrapping
     expect(msg: string): never {
         throw new Error(msg);
     }
@@ -576,10 +534,6 @@ export class ResultErr<T, E> implements IResult<T, E> {
     unwrap(): never {
         throw new Error('Called Result.unwrap() on an Err value: ' + this.value);
     }
-
-    //unwrap_or_default(): never {
-    //    // ! not implemented
-    //}
 
     expect_err(_msg: string): E {
         return this.value;
@@ -589,22 +543,30 @@ export class ResultErr<T, E> implements IResult<T, E> {
         return this.value;
     }
 
-    and<U>(_res: Result<U, E>): Result<U, E> {
-        return this as any;
+    // Combinators
+    /**
+     * On Err, `and` returns self. We construct a new ResultErr with updated value type.
+     */
+    and<U>(_res: Result<U, E>): ResultErr<U, E> {
+        return new ResultErr<U, E>(this.value);
     }
 
-    and_then<U>(_fn: (arg: T) => Result<U, E>): Result<U, E> {
-        return this as any;
+    /**
+     * On Err, `and_then` returns self. We construct a new ResultErr with updated value type.
+     */
+    and_then<U>(_fn: (arg: T) => Result<U, E>): ResultErr<U, E> {
+        return new ResultErr<U, E>(this.value);
     }
 
-    or<U>(res: Result<U, E>): Result<U, E> {
+    or<F>(res: Result<T, F>): Result<T, F> {
         return res;
     }
 
-    or_else<U>(fn: (arg: E) => Result<T, U>): Result<T, U> {
+    or_else<F>(fn: (arg: E) => Result<T, F>): Result<T, F> {
         return fn(this.value);
     }
 
+    // Default values
     unwrap_or(optb: T): T {
         return optb;
     }
@@ -613,11 +575,13 @@ export class ResultErr<T, E> implements IResult<T, E> {
         return fn(this.value);
     }
 
-    flatten(): Result<UnwrapResult<T>, E> {
-        return new ResultErr(this.value) as Result<never, E>;
+    // Flattening
+    flatten(): FlattenResult<T, E> {
+        return new ResultErr<UnwrapOk<T>, E>(this.value) as FlattenResult<T, E>;
     }
 
-    into_ok(): T {
+    // Type narrowing
+    into_ok(): never {
         throw new Error('Called Result.into_ok() on an Err value: ' + this.value);
     }
 
@@ -625,37 +589,151 @@ export class ResultErr<T, E> implements IResult<T, E> {
         return this.value;
     }
 
-    transmute(): Result<never, E> {
-        return this as any;
+    /**
+     * Transmutes to Err<never, E>, proving there's no value.
+     */
+    transmute(): ResultErr<never, E> {
+        return new ResultErr<never, E>(this.value);
+    }
+
+    /**
+     * Transposes Err(e) into Some(Err(e)).
+     * For Err, we always return Some(Err(e)) regardless of the expected Option type.
+     */
+    transpose(): any {
+        return Some(new ResultErr(this.value));
     }
 }
-export const Ok = <T, E>(val: T): Result<T, never> => {
-    return new ResultOk<T, E>(val) as Result<T, never>;
+
+// ============================================================================
+// Factory Functions
+// ============================================================================
+
+/**
+ * Creates an `Ok` result containing the given value.
+ *
+ * The error type defaults to `never`, indicating this Result cannot be an Err.
+ * This enables type inference to work correctly in chains.
+ *
+ * @example
+ * const result = Ok(42);  // Result<number, never>
+ * const mapped = result.map(x => x * 2);  // Result<number, never>
+ */
+export const Ok = <T>(val: T): ResultOk<T, never> => {
+    return new ResultOk<T, never>(val);
 };
 
-export const Err = <T, E>(val: E): Result<never, E> => {
-    return new ResultErr<T, E>(val) as Result<never, E>;
+/**
+ * Creates an `Err` result containing the given error.
+ *
+ * The value type defaults to `never`, indicating this Result cannot be Ok.
+ * This enables type inference to work correctly in chains.
+ *
+ * @example
+ * const result = Err(new Error("failed"));  // Result<never, Error>
+ * const handled = result.or(Ok(0));  // Result<number, never>
+ */
+export const Err = <E>(val: E): ResultErr<never, E> => {
+    return new ResultErr<never, E>(val);
 };
 
-export const try_catch =
-    <T, E = Error>(
-        fn: () => T,
-    ): Result<T, E> => {
-        try {
-            return Ok(fn());
-            // @ts-ignore (error is nominally of type any / unknown, not Error)
-        } catch (error: Error) {
-            return Err(error);
-        }
-    };
+// ============================================================================
+// Utility Functions
+// ============================================================================
 
-export const result_from_promise =
-    async <T, E = Error>(
-        val: Promise<T>,
-    ): Promise<Result<T, E>> => {
-        try {
-            return new ResultOk<T, never>(await val);
-        } catch (error: unknown) {
-            return new ResultErr<never, E>(error as E);
+/**
+ * Executes a function and wraps its result in a `Result`.
+ *
+ * If the function succeeds, returns `Ok(value)`.
+ * If it throws, returns `Err(error)`.
+ *
+ * @typeParam T - The return type of the function
+ * @typeParam E - The error type (defaults to Error)
+ *
+ * @example
+ * const result = try_catch(() => JSON.parse(jsonString));
+ * // Result<unknown, Error>
+ */
+export const try_catch = <T, E = Error>(fn: () => T): Result<T, E> => {
+    try {
+        return Ok(fn()) as Result<T, E>;
+    } catch (error: unknown) {
+        return Err(error as E) as Result<T, E>;
+    }
+};
+
+/**
+ * Converts a Promise to a Result wrapped in a Promise.
+ *
+ * If the promise resolves, returns `Ok(value)`.
+ * If it rejects, returns `Err(error)`.
+ *
+ * @typeParam T - The resolved value type
+ * @typeParam E - The error type (defaults to Error)
+ *
+ * @example
+ * const result = await result_from_promise(fetch('/api/data'));
+ * // Result<Response, Error>
+ */
+export const result_from_promise = async <T, E = Error>(
+    val: Promise<T>,
+): Promise<Result<T, E>> => {
+    try {
+        return Ok(await val) as Result<T, E>;
+    } catch (error: unknown) {
+        return Err(error as E) as Result<T, E>;
+    }
+};
+
+// ============================================================================
+// Advanced Type Utilities
+// ============================================================================
+
+/**
+ * Combines multiple Results into a single Result containing an array.
+ *
+ * If all Results are Ok, returns Ok with array of values.
+ * If any Result is Err, returns the first Err encountered.
+ *
+ * @example
+ * const results = collect([Ok(1), Ok(2), Ok(3)]);
+ * // Result<[number, number, number], never>
+ */
+export function collect<T extends readonly Result<any, any>[]>(
+    results: T
+): Result<
+    { [K in keyof T]: T[K] extends Result<infer U, any> ? U : never },
+    { [K in keyof T]: T[K] extends Result<any, infer E> ? E : never }[number]
+> {
+    const values: any[] = [];
+    for (const result of results) {
+        if (result.is_err()) {
+            return result as any;
         }
-    };
+        values.push(result.value);
+    }
+    return Ok(values) as any;
+}
+
+/**
+ * Type-safe match expression for Result.
+ *
+ * @example
+ * const message = matchResult(result, {
+ *     Ok: (value) => `Success: ${value}`,
+ *     Err: (error) => `Failed: ${error.message}`,
+ * });
+ */
+export function matchResult<T, E, R>(
+    result: Result<T, E>,
+    handlers: {
+        Ok: (value: T) => R;
+        Err: (error: E) => R;
+    }
+): R {
+    if (result.is_ok()) {
+        return handlers.Ok(result.value);
+    } else {
+        return handlers.Err(result.value);
+    }
+}

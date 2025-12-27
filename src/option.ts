@@ -1,273 +1,279 @@
-export type Option<T> =
-    OptionSome<T> | OptionNone<T>;
+// ============================================================================
+// Type-Level Utilities
+// ============================================================================
+
+/** Unique brand symbols for nominal typing */
+declare const SomeBrand: unique symbol;
+declare const NoneBrand: unique symbol;
+
+/** Extract the inner type from an Option */
+export type UnwrapOption<O> = O extends Option<infer T> ? T : never;
+
+/** Unwrap nested Option types for flatten() */
+export type FlattenOption<T> = T extends Option<infer U> ? Option<U> : Option<T>;
+
+/** Type-level check for nested Options */
+export type IsNestedOption<T> = T extends Option<any> ? true : false;
+
+// ============================================================================
+// Option Type Definition
+// ============================================================================
+
+/**
+ * A discriminated union representing an optional value.
+ *
+ * An `Option<T>` is either `Some(T)` containing a value, or `None` representing absence.
+ *
+ * @typeParam T - The type of the contained value
+ */
+export type Option<T> = OptionSome<T> | OptionNone<T>;
+
+// ============================================================================
+// Core Interfaces
+// ============================================================================
 
 export interface IOptionCheck<T> {
     /**
-     * Determines if the Option is Some.
-     * @returns true if the Option is Some, otherwise false.
+     * Returns `true` if the option is `Some`.
      *
-     * Usage Example:
-     * const myOption = Some(5);
-     * if (myOption.is_some()) {
-     *   console.log("It's Some!");
-     * }
+     * This is a type guard that narrows the type to `OptionSome<T>`.
      */
     is_some(): this is OptionSome<T>;
 
     /**
-     * Determines if the Option is Some and the contained value meets a condition.
-     * @param f The condition to apply to the contained value if it's Some.
-     * @returns true if the Option is Some and the condition returns true, otherwise false.
-     *
-     * Usage Example:
-     * const myOption = Some(5);
-     * const isGreaterThanThree = myOption.is_some_and(x => x > 3); // true
+     * Returns `true` if `Some` and the value satisfies the predicate.
      */
     is_some_and(f: (arg: T) => boolean): boolean;
 
     /**
-     * Determines if the Option is None.
-     * @returns true if the Option is None, otherwise false.
+     * Returns `true` if the option is `None`.
      *
-     * Usage Example:
-     * const myOption = None();
-     * if (myOption.is_none()) {
-     *  console.log("It's None!");
-     * }
+     * This is a type guard that narrows the type to `OptionNone<T>`.
      */
-    is_none(): boolean;
+    is_none(): this is OptionNone<T>;
+
+    /**
+     * Returns `true` if `None` OR if the value satisfies the predicate.
+     *
+     * This is the logical complement of `is_some_and` with negated predicate.
+     *
+     * @example
+     * ```typescript
+     * Some(2).is_none_or(x => x > 1)  // true
+     * Some(0).is_none_or(x => x > 1)  // false
+     * None().is_none_or(x => x > 1)   // true
+     * ```
+     */
+    is_none_or(f: (arg: T) => boolean): boolean;
 }
 
 export interface IOptionExpect<T> {
     /**
-     * Extracts the value from a Some, throwing an error if it is None.
-     * @param msg The error message to throw if the Option is None.
-     * @returns The contained value if the Option is Some.
-     * @throws Error with provided message if the Option is None.
+     * Returns the contained `Some` value, or throws with the provided message.
      *
-     * Usage Example:
-     * const myOption = Some(5);
-     * const value = myOption.expect("Expected a value!"); // 5
+     * @throws Error with `msg` if this is `None`
      */
-    expect(msg: string): T | never;
+    expect(msg: string): T;
 }
 
 export interface IOptionTransform<T> {
     /**
-     * Transforms the contained value of a Some with a provided function. Returns None if this Option is None.
-     * @param fn The mapping function to apply to the contained value.
-     * @returns An Option containing the result of applying fn to the original value if it was Some, else None.
-     *
-     * Usage Example:
-     * const myOption = Some(5);
-     * const newOption = myOption.map(x => x * 2); // Some(10)
+     * Maps an `Option<T>` to `Option<U>` by applying `fn` to the contained value.
      */
     map<U>(fn: (arg: T) => U): Option<U>;
 
     /**
-     * Applies a function to the contained value if Some, otherwise returns a provided default.
-     * @param defaultVal The default value to return if the Option is None.
-     * @param fn The function to apply to the contained value if Some.
-     * @returns The result of applying fn to the contained value if this Option is Some, else defaultVal.
-     *
-     * Usage Example:
-     * const myOption = None();
-     * const value = myOption.map_or(0, x => x * 2); // 0
+     * Returns the provided default (if `None`), or applies `fn` to the contained value.
      */
     map_or<U>(defaultVal: U, fn: (arg: T) => U): U;
+
+    /**
+     * Calls `fn` with the contained value for side effects, then returns the original option.
+     *
+     * @example
+     * ```typescript
+     * Some(5)
+     *     .inspect(x => console.log(`value: ${x}`))
+     *     .map(x => x * 2)
+     * ```
+     */
+    inspect(f: (val: T) => void): this;
 }
 
 export interface IOptionCombine<T> {
     /**
-     * Returns the passed Option if this Option is Some, else returns None.
-     * @param opt The Option to return if this Option is Some.
-     * @returns The passed Option if this Option is Some, else None.
-     *
-     * Usage Example:
-     * const opt1 = Some(5);
-     * const opt2 = Some(10);
-     * const result = opt1.and(opt2); // Some(10)
+     * Returns `None` if `self` is `None`, otherwise returns `opt`.
      */
     and<U>(opt: Option<U>): Option<U>;
 
     /**
-     * Returns the result of applying a function to the contained value if Some, otherwise returns None.
-     * @param fn The function to apply to the contained value.
-     * @returns An Option containing the result of applying fn to the original value if it was Some, else None.
-     *
-     * Usage Example:
-     * const myOption = Some(5);
-     * const newOption = myOption.and_then(x => Some(x * 2)); // Some(10)
+     * Returns `None` if `self` is `None`, otherwise calls `fn` with the wrapped value.
+     * This is the monadic bind operation (flatMap).
      */
     and_then<U>(fn: (arg: T) => Option<U>): Option<U>;
 
     /**
-     * Returns the passed Option if this Option is None, else returns this Option.
-     * @param opt The alternative Option to return if this Option is None.
-     * @returns This Option if it is Some, otherwise the passed Option.
-     *
-     * Usage Example:
-     * const opt1 = None();
-     * const opt2 = Some(10);
-     * const result = opt1.or(opt2); // Some(10)
+     * Returns `self` if `Some`, otherwise returns `opt`.
      */
-    or<U>(opt: Option<U>): Option<T> | Option<U>;
+    or<U>(opt: Option<U>): Option<T | U>;
 
     /**
-     * Returns the result of applying a function if this Option is None, else returns this Option.
-     * @param fn The function that produces an Option to return if this Option is None.
-     * @returns This Option if it is Some, otherwise the Option produced by fn.
-     *
-     * Usage Example:
-     * const opt1 = None();
-     * const result = opt1.or_else(() => Some(10)); // Some(10)
+     * Returns `self` if `Some`, otherwise calls `fn` and returns the result.
      */
-    or_else<U>(fn: () => Option<U>): Option<T> | Option<U>;
+    or_else<U>(fn: () => Option<U>): Option<T | U>;
 
     /**
-     * Returns None if both this and the passed Option are Some. Otherwise returns the Option that is Some.
-     * @param optb The other Option to compare with.
-     * @returns None if both Options are Some, otherwise the Option that is Some.
-     *
-     * Usage Example:
-     * const opt1 = Some(5);
-     * const opt2 = None();
-     * const result = opt1.xor(opt2); // Some(5)
+     * Returns `Some` if exactly one of `self` and `optb` is `Some`, otherwise `None`.
      */
     xor(optb: Option<T>): Option<T>;
 }
 
 export interface IOptionUtility<T> {
     /**
-     * Unwraps the Option, returning the contained value, or throws an error if the Option is None.
-     * @returns The contained value if this Option is Some.
-     * @throws Error if this Option is None.
+     * Returns the contained `Some` value, or throws.
      *
-     * Usage Example:
-     * const myOption = Some(5);
-     * const value = myOption.unwrap(); // 5
+     * @throws Error if this is `None`
      */
-    unwrap(): T | never;
+    unwrap(): T;
 
     /**
-     * Returns the contained value if Some, else returns a provided alternative.
-     * @param optb The alternative value to return if this Option is None.
-     * @returns The contained value if this Option is Some, else optb.
-     *
-     * Usage Example:
-     * const myOption = None();
-     * const value = myOption.unwrap_or(10); // 10
+     * Returns the contained `Some` value, or the provided default.
      */
     unwrap_or(optb: T): T;
 
     /**
-     * Returns the contained value if Some, else computes a value from a provided function.
-     * @param fn The function to compute the alternative value from if this Option is None.
-     * @returns The contained value if this Option is Some, else the result of fn.
-     *
-     * Usage Example:
-     * const myOption = None();
-     * const value = myOption.unwrap_or_else(() => 10); // 10
+     * Returns the contained `Some` value, or computes it from `fn`.
      */
     unwrap_or_else(fn: () => T): T;
 
     /**
-     * Returns the contained value if Some, otherwise the default value for the type.
-     * @returns The contained value if Some, else the type’s default value.
-     *
-     * Usage Example:
-     * const myOption is None<number>();
-     * const value = myOption.unwrap_or_default(); // 0
+     * Returns the contained `Some` value, or `null` if `None`.
      */
     unwrap_or_default(): T | null;
 }
 
 export interface IOptionMutate<T> {
     /**
-     * Takes the contained value out of the Option, leaving a None in its place.
-     * @returns The Option containing the original value before it was taken.
+     * Takes the value out of the option, leaving a `None` in its place.
      *
-     * Usage Example:
-     * const myOption = Some(5);
-     * const takenValue = myOption.take(); // Some(5), myOption is now None
+     * @returns An `Option` containing the original value
      */
     take(): Option<T>;
 
     /**
-     * Takes the contained value out of the Option if it satisfies a predicate, leaving a None in its place.
-     * @param predicate The predicate to apply to the contained value.
-     * @returns The Option containing the original value if the predicate returns true, otherwise None.
-     *
-     * Usage Example:
-     * const myOption = Some(5);
-     * const takenValue = myOption.take_if(x => x > 3); // Some(5), myOption is now None
+     * Takes the value out if it satisfies the predicate, leaving `None` in its place.
      */
     take_if(predicate: (arg: T) => boolean): Option<T>;
 
     /**
-     * Replaces the contained value with another, returning the old value wrapped in an Option.
-     * @param value The new value to put in the Option.
-     * @returns An Option containing the old value.
-     * 
-     * Usage Example:
-     * const myOption = Some(5);
-     * const oldValue = myOption.replace(10); // Some(5), myOption now contains 10
-     * 
-    */
+     * Replaces the actual value with the provided one, returning the old value.
+     *
+     * @returns An `Option` containing the old value
+     */
     replace(value: T): Option<T>;
 }
 
 export interface IOptionZip<T> {
     /**
-     * Combines two Option values into a single Option containing a tuple of their values if both are Some, otherwise returns None.
-     * @param other The other Option to zip with.
-     * @returns An Option containing a tuple of the two Option values if both are Some, otherwise None.
+     * Zips `self` with another `Option`.
      *
-     * Usage Example:
-     * const opt1 = Some(5);
-     * const opt2 = Some("hello");
-     * const zipped = opt1.zip(opt2); // Some([5, "hello"])
+     * Returns `Some([T, U])` if both are `Some`, otherwise `None`.
      */
     zip<U>(other: Option<U>): Option<[T, U]>;
 
     /**
-     * Combines two Option values by applying a function if both are Some, otherwise returns None.
-     * @param other The other Option to zip with.
-     * @param f The function to apply to the values if both Options are Some.
-     * @returns An Option containing the result of the function if both Options are Some, otherwise None.
+     * Zips `self` and another `Option` with a function.
      *
-     * Usage Example:
-     * const opt1 = Some(5);
-     * const opt2 = Some(10);
-     * const added = opt1.zip_with(opt2, (a, b) => a + b); // Some(15)
+     * Returns `Some(f(t, u))` if both are `Some`, otherwise `None`.
      */
     zip_with<U, R>(other: Option<U>, f: (val: T, other: U) => R): Option<R>;
 }
+
 export interface IOptionFilter<T> {
     /**
-     * Applies a predicate to the contained value if Some, returns None if the predicate does not hold or if this Option is None.
-     * @param predicate The predicate function to apply.
-     * @returns The original Option if it is Some and the predicate holds, else None.
+     * Returns `None` if `self` is `None`, otherwise calls `predicate` with the wrapped value.
      *
-     * Usage Example:
-     * const myOption = Some(5);
-     * const filteredOption = myOption.filter(x => x > 3); // Some(5)
+     * Returns `Some(t)` if the predicate returns `true`, otherwise `None`.
      */
     filter(predicate: (arg: T) => boolean): Option<T>;
 }
 
 export interface IOptionFlatten<T> {
     /**
-     * Flattens a nested Option, if the Option contains another Option, returning the inner Option if it's Some.
-     * @returns The contained Option if this is an Option of an Option and the inner Option is Some, otherwise None.
+     * Flattens an `Option<Option<U>>` to `Option<U>`.
      *
-     * Usage Example:
-     * const opt = Some(Some(5));
-     * const flattened = opt.flatten(); // Some(5)
+     * If `T` is not an `Option`, this returns the option unchanged.
      */
-    flatten<T extends Option<T>>(): Option<T>;
+    flatten(): FlattenOption<T>;
 }
 
+// Forward declaration for Result types (will be imported at runtime)
+type ResultLike<T, E> = { is_ok(): boolean; value: T | E; _tag: 'Ok' | 'Err' };
+
+export interface IOptionConvert<T> {
+    /**
+     * Transforms `Option<T>` into `Result<T, E>`.
+     *
+     * Returns `Ok(v)` if `Some(v)`, otherwise `Err(err)`.
+     *
+     * @example
+     * ```typescript
+     * Some(5).ok_or("missing")     // Ok(5)
+     * None().ok_or("missing")      // Err("missing")
+     * ```
+     */
+    ok_or<E>(err: E): { _tag: 'Ok' | 'Err'; value: T | E };
+
+    /**
+     * Transforms `Option<T>` into `Result<T, E>` with a lazily computed error.
+     *
+     * Returns `Ok(v)` if `Some(v)`, otherwise `Err(err())`.
+     *
+     * @example
+     * ```typescript
+     * Some(5).ok_or_else(() => new Error("missing"))  // Ok(5)
+     * None().ok_or_else(() => new Error("missing"))   // Err(Error)
+     * ```
+     */
+    ok_or_else<E>(err: () => E): { _tag: 'Ok' | 'Err'; value: T | E };
+}
+
+export interface IOptionAdvanced<T> {
+    /**
+     * Unzips an option containing a tuple into a tuple of options.
+     *
+     * @example
+     * ```typescript
+     * Some([1, "hi"]).unzip()  // [Some(1), Some("hi")]
+     * None().unzip()           // [None, None]
+     * ```
+     */
+    unzip(): T extends [infer A, infer B] ? [Option<A>, Option<B>] : never;
+
+    /**
+     * Transposes an `Option` of a `Result` into a `Result` of an `Option`.
+     *
+     * - `None` → `Ok(None)`
+     * - `Some(Ok(x))` → `Ok(Some(x))`
+     * - `Some(Err(e))` → `Err(e)`
+     *
+     * @example
+     * ```typescript
+     * Some(Ok(5)).transpose()   // Ok(Some(5))
+     * Some(Err("e")).transpose() // Err("e")
+     * None().transpose()         // Ok(None)
+     * ```
+     */
+    transpose(): T extends { _tag: 'Ok'; value: infer U }
+        ? { _tag: 'Ok'; value: Option<U> }
+        : T extends { _tag: 'Err'; value: infer E }
+        ? { _tag: 'Err'; value: E }
+        : { _tag: 'Ok'; value: Option<unknown> };
+}
+
+/**
+ * The complete Option interface combining all capability interfaces.
+ */
 export interface IOption<T> extends
     IOptionCheck<T>,
     IOptionExpect<T>,
@@ -277,15 +283,31 @@ export interface IOption<T> extends
     IOptionMutate<T>,
     IOptionZip<T>,
     IOptionFilter<T>,
-    IOptionFlatten<T> { }
+    IOptionFlatten<T>,
+    IOptionConvert<T>,
+    IOptionAdvanced<T> {}
 
-export class OptionSome<T> implements IOption<T> {
+// ============================================================================
+// OptionSome Implementation
+// ============================================================================
+
+/**
+ * The `Some` variant of `Option<T>`, representing a present value.
+ *
+ * Uses branded typing for nominal type safety.
+ *
+ * @typeParam T - The type of the contained value
+ */
+export class OptionSome<out T> implements IOption<T> {
+    /** Brand for nominal typing - ensures OptionSome is distinct from OptionNone */
+    declare readonly [SomeBrand]: T;
+
+    /** Discriminant tag for runtime type checking */
     readonly _tag = 'Some' as const;
-    // @ts-ignore
-    readonly _T: T;
 
-    constructor(readonly value: T) { }
+    constructor(public value: T) {}
 
+    // Type guards
     is_some(): this is OptionSome<T> {
         return true;
     }
@@ -294,22 +316,50 @@ export class OptionSome<T> implements IOption<T> {
         return f(this.value);
     }
 
-    is_none(): this is never {
+    is_none(): this is OptionNone<T> {
         return false;
     }
 
+    is_none_or(f: (arg: T) => boolean): boolean {
+        return f(this.value);
+    }
+
+    // Extraction
     expect(_msg: string): T {
         return this.value;
     }
 
-    map<U>(fn: (arg: T) => U): Option<U> {
-        return new OptionSome<U>(fn(this.value));
+    unwrap(): T {
+        return this.value;
+    }
+
+    unwrap_or(_optb: T): T {
+        return this.value;
+    }
+
+    unwrap_or_else(_fn: () => T): T {
+        return this.value;
+    }
+
+    unwrap_or_default(): T {
+        return this.value;
+    }
+
+    // Transformations
+    map<U>(fn: (arg: T) => U): OptionSome<U> {
+        return new OptionSome(fn(this.value));
     }
 
     map_or<U>(_defaultVal: U, fn: (arg: T) => U): U {
         return fn(this.value);
     }
 
+    inspect(f: (val: T) => void): this {
+        f(this.value);
+        return this;
+    }
+
+    // Combinators
     and<U>(opt: Option<U>): Option<U> {
         return opt;
     }
@@ -318,106 +368,134 @@ export class OptionSome<T> implements IOption<T> {
         return fn(this.value);
     }
 
-    filter(predicate: (arg: T) => boolean): Option<T> {
-        if (predicate(this.value)) {
-            return this;
-        }
-
-        return None<T>();
+    /**
+     * On Some, `or` returns self.
+     * Returns this instance typed as Option<T | U> for type compatibility.
+     */
+    or<U>(_opt: Option<U>): OptionSome<T> {
+        return this;
     }
 
-    or<U>(_opt: Option<U>): Option<T> {
-        return this as any;
-    }
-
-    or_else<U>(_fn: () => Option<U>): Option<T> {
-        return this as any;
+    /**
+     * On Some, `or_else` returns self.
+     */
+    or_else<U>(_fn: () => Option<U>): OptionSome<T> {
+        return this;
     }
 
     xor(optb: Option<T>): Option<T> {
         if (optb.is_some()) {
-            return None<T>();
+            return new OptionNone();
         }
-
         return this;
     }
 
-    unwrap(): T {
-        return this.value;
+    // Filtering
+    filter(predicate: (arg: T) => boolean): Option<T> {
+        if (predicate(this.value)) {
+            return this;
+        }
+        return new OptionNone();
     }
 
-    unwrap_or(optb: T): T {
-        return this.value;
-    }
-
-    unwrap_or_else(_fn: () => T): T {
-        return this.value;
-    }
-
-    unwrap_or_default(): T | null {
-        return this.value;
-    }
-
+    // Mutation
     take(): Option<T> {
         const value = this.value;
-        // @ts-ignore "administrative override" :-)
-        this.value = undefined as any;
-        return new OptionSome<T>(value);
+        // Mutate in place - this is intentional per the Rust API
+        (this as { value: T | undefined }).value = undefined as any;
+        return new OptionSome(value);
     }
 
     take_if(predicate: (arg: T) => boolean): Option<T> {
         if (predicate(this.value)) {
             return this.take();
         }
-
-        return None<T>();
+        return new OptionNone();
     }
 
     replace(value: T): Option<T> {
         const oldValue = this.value;
-        // @ts-ignore "administrative override" :-)
         this.value = value;
-        return new OptionSome<T>(oldValue);
+        return new OptionSome(oldValue);
     }
 
+    // Zipping
     zip<U>(other: Option<U>): Option<[T, U]> {
         if (other.is_some()) {
-            return new OptionSome<[T, U]>([this.value, other.unwrap()]);
+            return new OptionSome<[T, U]>([this.value, other.value]);
         }
-
-        return new OptionNone<[T, U]>();
+        return new OptionNone();
     }
 
     zip_with<U, R>(other: Option<U>, f: (val: T, other: U) => R): Option<R> {
         if (other.is_some()) {
-            return new OptionSome<R>(f(this.value, other.unwrap()));
+            return new OptionSome(f(this.value, other.value));
         }
-
-        return new OptionNone<R>();
+        return new OptionNone();
     }
 
-    flatten<T extends Option<T>>(): Option<T> {
-        if (this.value instanceof OptionSome) {
-            // If the value is an OptionSome, we return it directly.
-            return this.value;
+    // Flattening
+    flatten(): FlattenOption<T> {
+        const val = this.value;
+        if (val instanceof OptionSome) {
+            return val as FlattenOption<T>;
+        }
+        if (val instanceof OptionNone) {
+            return val as FlattenOption<T>;
+        }
+        // T is not an Option, return self unchanged
+        return this as unknown as FlattenOption<T>;
+    }
+
+    // Conversion to Result
+    ok_or<E>(_err: E): { _tag: 'Ok'; value: T } {
+        return { _tag: 'Ok', value: this.value };
+    }
+
+    ok_or_else<E>(_err: () => E): { _tag: 'Ok'; value: T } {
+        return { _tag: 'Ok', value: this.value };
+    }
+
+    // Advanced
+    unzip(): T extends [infer A, infer B] ? [Option<A>, Option<B>] : never {
+        const [a, b] = this.value as [unknown, unknown];
+        return [new OptionSome(a), new OptionSome(b)] as any;
+    }
+
+    transpose(): any {
+        const result = this.value as { _tag: 'Ok' | 'Err'; value: unknown; is_ok?(): boolean };
+        if (result._tag === 'Ok' || (result.is_ok && result.is_ok())) {
+            return { _tag: 'Ok', value: new OptionSome(result.value) };
         } else {
-            // If the value is not an OptionSome (meaning it's an OptionNone or another type),
-            // we return None<T>(). This assumes that None<T>() creates an OptionNone<T> instance.
-            return None<T>();
+            return { _tag: 'Err', value: result.value };
         }
     }
 }
 
-export class OptionNone<T> implements IOption<T> {
-    private readonly _tag: 'None' = 'None';
-    // @ts-ignore
-    private readonly _T: T;
+// ============================================================================
+// OptionNone Implementation
+// ============================================================================
 
-    is_some(): this is never {
+/**
+ * The `None` variant of `Option<T>`, representing absence of a value.
+ *
+ * Uses branded typing for nominal type safety.
+ *
+ * @typeParam T - The phantom type parameter for type compatibility
+ */
+export class OptionNone<out T = never> implements IOption<T> {
+    /** Brand for nominal typing - ensures OptionNone is distinct from OptionSome */
+    declare readonly [NoneBrand]: void;
+
+    /** Discriminant tag for runtime type checking */
+    readonly _tag = 'None' as const;
+
+    // Type guards
+    is_some(): this is OptionSome<T> {
         return false;
     }
 
-    is_some_and(_f: (arg: T) => boolean): boolean {
+    is_some_and(_f: (arg: T) => boolean): false {
         return false;
     }
 
@@ -425,40 +503,13 @@ export class OptionNone<T> implements IOption<T> {
         return true;
     }
 
+    is_none_or(_f: (arg: T) => boolean): true {
+        return true;
+    }
+
+    // Extraction
     expect(msg: string): never {
         throw new Error(msg);
-    }
-
-    map<U>(_fn: (arg: T) => U): Option<U> {
-        return this as any;
-    }
-
-    map_or<U>(defaultVal: U, _fn: (arg: T) => U): U {
-        return defaultVal;
-    }
-
-    and<U>(_opt: Option<U>): Option<U> {
-        return this as any;
-    }
-
-    and_then<U>(_fn: (arg: T) => Option<U>): Option<U> {
-        return this as any;
-    }
-
-    filter(_predicate: (arg: T) => boolean): Option<T> {
-        return this as any;
-    }
-
-    or<U>(opt: Option<U>): Option<U> {
-        return opt;
-    }
-
-    or_else<U>(fn: () => Option<U>): Option<U> {
-        return fn();
-    }
-
-    xor(optb: Option<T>): Option<T> {
-        return optb;
     }
 
     unwrap(): never {
@@ -473,52 +524,215 @@ export class OptionNone<T> implements IOption<T> {
         return fn();
     }
 
-    unwrap_or_default(): T | null {
-        return null as any;
+    unwrap_or_default(): null {
+        return null;
     }
 
-    take(): Option<T> {
+    // Transformations
+    /**
+     * On None, map returns None with updated type parameter.
+     */
+    map<U>(_fn: (arg: T) => U): OptionNone<U> {
+        return new OptionNone<U>();
+    }
+
+    map_or<U>(defaultVal: U, _fn: (arg: T) => U): U {
+        return defaultVal;
+    }
+
+    inspect(_f: (val: T) => void): this {
         return this;
     }
 
-    take_if(_predicate: (arg: T) => boolean): Option<T> {
+    // Combinators
+    /**
+     * On None, `and` returns None with updated type parameter.
+     */
+    and<U>(_opt: Option<U>): OptionNone<U> {
+        return new OptionNone<U>();
+    }
+
+    /**
+     * On None, `and_then` returns None with updated type parameter.
+     */
+    and_then<U>(_fn: (arg: T) => Option<U>): OptionNone<U> {
+        return new OptionNone<U>();
+    }
+
+    or<U>(opt: Option<U>): Option<U> {
+        return opt;
+    }
+
+    or_else<U>(fn: () => Option<U>): Option<U> {
+        return fn();
+    }
+
+    xor(optb: Option<T>): Option<T> {
+        return optb;
+    }
+
+    // Filtering
+    /**
+     * On None, filter returns None.
+     */
+    filter(_predicate: (arg: T) => boolean): OptionNone<T> {
         return this;
     }
 
-    replace(value: T): Option<T> {
+    // Mutation
+    take(): OptionNone<T> {
+        return this;
+    }
+
+    take_if(_predicate: (arg: T) => boolean): OptionNone<T> {
+        return this;
+    }
+
+    /**
+     * On None, replace returns Some with the provided value.
+     *
+     * Note: This differs from Rust's semantics where replace would mutate
+     * self to become Some and return the old value (None). Here we maintain
+     * immutability - self remains None and we return Some(value).
+     */
+    replace(value: T): OptionSome<T> {
         return new OptionSome<T>(value);
     }
 
-    zip<U>(other: Option<U>): Option<[T, U]> {
-        return None<[T, U]>();
+    // Zipping
+    zip<U>(_other: Option<U>): OptionNone<[T, U]> {
+        return new OptionNone();
     }
 
-    zip_with<U, R>(_other: Option<U>, _f: (val: T, other: U) => R): Option<R> {
-        return None<R>();
+    zip_with<U, R>(_other: Option<U>, _f: (val: T, other: U) => R): OptionNone<R> {
+        return new OptionNone();
     }
 
-    flatten<T extends Option<T>>(): Option<T> {
-        return this as any;
+    // Flattening
+    flatten(): FlattenOption<T> {
+        return new OptionNone() as FlattenOption<T>;
+    }
+
+    // Conversion to Result
+    ok_or<E>(err: E): { _tag: 'Err'; value: E } {
+        return { _tag: 'Err', value: err };
+    }
+
+    ok_or_else<E>(err: () => E): { _tag: 'Err'; value: E } {
+        return { _tag: 'Err', value: err() };
+    }
+
+    // Advanced
+    unzip(): T extends [infer A, infer B] ? [Option<A>, Option<B>] : never {
+        return [new OptionNone(), new OptionNone()] as any;
+    }
+
+    transpose(): any {
+        return { _tag: 'Ok', value: new OptionNone() };
     }
 }
 
-export const Some = <T>(val: T): Option<T> => {
-    return new OptionSome<T>(val);
+// ============================================================================
+// Factory Functions
+// ============================================================================
+
+/**
+ * Creates a `Some` option containing the given value.
+ *
+ * @example
+ * const opt = Some(42);  // Option<number>
+ * const mapped = opt.map(x => x * 2);  // Option<number>
+ */
+export const Some = <T>(val: T): OptionSome<T> => {
+    return new OptionSome(val);
 };
 
-export const None = <T>(): Option<T> => {
+/**
+ * Creates a `None` option of the specified type.
+ *
+ * @example
+ * const opt = None<number>();  // Option<number>
+ * const fallback = opt.or(Some(0));  // Option<number>
+ */
+export const None = <T = never>(): OptionNone<T> => {
     return new OptionNone<T>();
 };
 
-export const option_from_nullable =
-    <T>(val: T | null | undefined): Option<T> => {
-        if (val === null || val === undefined) {
-            return None<T>();
-        }
+// ============================================================================
+// Utility Functions
+// ============================================================================
 
-        return Some(val);
-    };
+/**
+ * Converts a nullable value to an Option.
+ *
+ * Returns `Some(val)` if the value is not null/undefined, otherwise `None`.
+ *
+ * @example
+ * const opt1 = option_from_nullable("hello");  // Some("hello")
+ * const opt2 = option_from_nullable(null);     // None
+ * const opt3 = option_from_nullable(undefined); // None
+ */
+export const option_from_nullable = <T>(val: T | null | undefined): Option<NonNullable<T>> => {
+    if (val === null || val === undefined) {
+        return None();
+    }
+    return Some(val as NonNullable<T>);
+};
 
-export const option_from_promise =
-    <T>(promise: Promise<T>): Promise<Option<T>> =>
-        promise.then(Some).catch(() => None<T>());
+/**
+ * Converts a Promise to an Option wrapped in a Promise.
+ *
+ * If the promise resolves, returns `Some(value)`.
+ * If it rejects, returns `None`.
+ *
+ * @example
+ * const opt = await option_from_promise(fetch('/api/data'));
+ * // Option<Response>
+ */
+export const option_from_promise = <T>(promise: Promise<T>): Promise<Option<T>> =>
+    promise.then(Some).catch(() => None<T>());
+
+// ============================================================================
+// Advanced Type Utilities
+// ============================================================================
+
+/**
+ * Type-safe match expression for Option.
+ *
+ * @example
+ * const message = matchOption(option, {
+ *     Some: (value) => `Found: ${value}`,
+ *     None: () => "Not found",
+ * });
+ */
+export function matchOption<T, R>(
+    option: Option<T>,
+    handlers: {
+        Some: (value: T) => R;
+        None: () => R;
+    }
+): R {
+    if (option.is_some()) {
+        return handlers.Some(option.value);
+    } else {
+        return handlers.None();
+    }
+}
+
+/**
+ * Transposes an Option of a Result into a Result of an Option.
+ *
+ * - `None` -> `Ok(None)`
+ * - `Some(Ok(x))` -> `Ok(Some(x))`
+ * - `Some(Err(e))` -> `Err(e)`
+ *
+ * This is useful for error handling in option chains.
+ */
+// Note: This requires importing Result types, so we use a type-only approach
+export type TransposeOption<T> = T extends { is_ok(): boolean; value: infer V }
+    ? T extends { _tag: 'Ok' }
+        ? { _tag: 'Ok'; value: Option<V> }
+        : T extends { _tag: 'Err' }
+        ? T
+        : never
+    : never;

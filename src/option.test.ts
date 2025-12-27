@@ -429,4 +429,105 @@ describe('Option', () => {
             });
         });
     });
+
+    describe('New Rust-inspired Methods', () => {
+        describe('is_none_or', () => {
+            it('returns true if None', () => {
+                expect(None<number>().is_none_or(x => x > 5)).toBe(true);
+            });
+
+            it('returns true if Some and predicate is true', () => {
+                expect(Some(10).is_none_or(x => x > 5)).toBe(true);
+            });
+
+            it('returns false if Some and predicate is false', () => {
+                expect(Some(3).is_none_or(x => x > 5)).toBe(false);
+            });
+        });
+
+        describe('inspect', () => {
+            it('calls function with Some value', () => {
+                let inspected: number | null = null;
+                Some(42).inspect(x => { inspected = x; });
+                expect(inspected).toBe(42);
+            });
+
+            it('does not call function on None', () => {
+                let called = false;
+                None<number>().inspect(() => { called = true; });
+                expect(called).toBe(false);
+            });
+
+            it('returns self for chaining', () => {
+                const result = Some(5).inspect(() => {}).map(x => x * 2);
+                expect(result.unwrap()).toBe(10);
+            });
+        });
+
+        describe('ok_or', () => {
+            it('converts Some to Ok', () => {
+                const result = Some(42).ok_or('error');
+                expect(result._tag).toBe('Ok');
+                expect(result.value).toBe(42);
+            });
+
+            it('converts None to Err', () => {
+                const result = None<number>().ok_or('error');
+                expect(result._tag).toBe('Err');
+                expect(result.value).toBe('error');
+            });
+        });
+
+        describe('ok_or_else', () => {
+            it('converts Some to Ok without calling error fn', () => {
+                let called = false;
+                const result = Some(42).ok_or_else(() => { called = true; return 'error'; });
+                expect(result._tag).toBe('Ok');
+                expect(result.value).toBe(42);
+                expect(called).toBe(false);
+            });
+
+            it('converts None to Err by calling error fn', () => {
+                const result = None<number>().ok_or_else(() => 'computed error');
+                expect(result._tag).toBe('Err');
+                expect(result.value).toBe('computed error');
+            });
+        });
+
+        describe('unzip', () => {
+            it('unzips Some tuple into tuple of Somes', () => {
+                const [a, b] = Some([1, 'hello'] as [number, string]).unzip();
+                expect(a.unwrap()).toBe(1);
+                expect(b.unwrap()).toBe('hello');
+            });
+
+            it('unzips None into tuple of Nones', () => {
+                const [a, b] = None<[number, string]>().unzip();
+                expect(a.is_none()).toBe(true);
+                expect(b.is_none()).toBe(true);
+            });
+        });
+
+        describe('transpose', () => {
+            it('transposes Some(Ok(x)) to Ok(Some(x))', () => {
+                const optionOfResult = Some({ _tag: 'Ok' as const, value: 42 });
+                const result = optionOfResult.transpose();
+                expect(result._tag).toBe('Ok');
+                expect((result.value as any).unwrap()).toBe(42);
+            });
+
+            it('transposes Some(Err(e)) to Err(e)', () => {
+                const optionOfResult = Some({ _tag: 'Err' as const, value: 'error' });
+                const result = optionOfResult.transpose();
+                expect(result._tag).toBe('Err');
+                expect(result.value).toBe('error');
+            });
+
+            it('transposes None to Ok(None)', () => {
+                const result = None<{ _tag: 'Ok'; value: number }>().transpose();
+                expect(result._tag).toBe('Ok');
+                expect((result.value as any).is_none()).toBe(true);
+            });
+        });
+    });
 });

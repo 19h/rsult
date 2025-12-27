@@ -24,6 +24,9 @@ $ pnpm add rsult
 
 ```typescript
 import { Option, Result, Some, None, Ok, Err } from 'rsult';
+
+// Async variants for Promise-based workflows
+import { ResultAsync, OptionAsync } from 'rsult';
 ```
 
 ### tl;dr
@@ -31,11 +34,8 @@ import { Option, Result, Some, None, Ok, Err } from 'rsult';
 - rsult is inspired by Rust's `Option` and `Result` types.
 - It helps you handle optional values and results, eliminating `null` and `undefined` checks.
 - You can wrap values in `Some`, `None`, `Ok`, or `Err`, and use handy functions to transform, combine, and handle errors expressively.
-- It's a friendly sidekick that makes your code safer and more predictable. ✨
-
-### tl;dr
-
-rsult makes your code safer and more predictable.
+- Includes **async variants** (`ResultAsync`, `OptionAsync`) for seamless Promise-based workflows.
+- Uses **branded types** for nominal typing and proper TypeScript type safety.
 
 ## Usage
 
@@ -107,6 +107,64 @@ const transformedResult = okResult.map(x => x * 2); // Ok(10)
 
 ```typescript
 const valueWithDefault = errResult.unwrap_or(0); // 0
+```
+
+### Async Variants
+
+rsult provides `ResultAsync` and `OptionAsync` for working with Promises in a type-safe, composable way.
+
+#### ResultAsync
+
+```typescript
+import { ResultAsync } from 'rsult';
+
+// Create from various sources
+const fromPromise = ResultAsync.fromPromise(fetch('/api/data'));
+const fromTry = ResultAsync.try(async () => {
+    const response = await fetch('/api/data');
+    return response.json();
+});
+
+// Chain async operations
+const result = await ResultAsync.ok(userId)
+    .andThen(id => fetchUser(id))
+    .map(user => user.name)
+    .mapErr(err => `Failed: ${err.message}`);
+
+// Combine multiple async results
+const combined = await ResultAsync.all([
+    fetchUser(1),
+    fetchUser(2),
+    fetchUser(3),
+]);
+```
+
+#### OptionAsync
+
+```typescript
+import { OptionAsync } from 'rsult';
+
+// Create from various sources
+const fromNullable = OptionAsync.fromNullable(maybeValue);
+const fromPromise = OptionAsync.fromPromise(fetchOptionalData());
+
+// Chain async operations
+const result = await OptionAsync.some(userId)
+    .andThen(id => findUser(id))
+    .map(user => user.email)
+    .filter(email => email.endsWith('@example.com'));
+```
+
+#### Converting Between Sync and Async
+
+```typescript
+// Sync to Async
+const asyncResult = Ok(42).toAsync();
+const asyncOption = Some('hello').toAsync();
+
+// Async resolves to sync types
+const syncResult: Result<number, Error> = await asyncResult;
+const syncOption: Option<string> = await asyncOption;
 ```
 
 ## Advanced Usage
@@ -225,6 +283,7 @@ console.log(result); // "Parsed content: {"parsed":"Resource content"}"
 - `is_some()`: Checks if the Option is Some.
 - `is_none()`: Checks if the Option is None.
 - `is_some_and(f: (arg: T) => boolean)`: Determines if the Option is Some and the contained value meets a condition.
+- `is_none_or(f: (arg: T) => boolean)`: Returns `true` if the Option is None, or if Some and the value satisfies the predicate.
 
 #### Transform Methods
 - `map(fn: (arg: T) => U)`: Transforms the contained value of a Some with a provided function. Returns None if this Option is None.
@@ -258,6 +317,16 @@ console.log(result); // "Parsed content: {"parsed":"Resource content"}"
 
 #### Flatten Method
 - `flatten()`: Flattens a nested Option, if the Option contains another Option, returning the inner Option if it's Some.
+
+#### Inspection Method
+- `inspect(f: (arg: T) => void)`: Calls the provided function with the contained value if Some, returns the Option unchanged.
+
+#### Conversion Methods
+- `ok_or<E>(err: E)`: Transforms `Some(v)` to `Ok(v)` and `None` to `Err(err)`.
+- `ok_or_else<E>(f: () => E)`: Transforms `Some(v)` to `Ok(v)` and `None` to `Err(f())`.
+- `transpose()`: Transposes an `Option<Result<T, E>>` into a `Result<Option<T>, E>`.
+- `unzip()`: Unzips an `Option<[A, B]>` into `[Option<A>, Option<B>]`.
+- `toAsync()`: Converts the Option to an OptionAsync for async chaining.
 
 ### Result
 
@@ -303,6 +372,93 @@ console.log(result); // "Parsed content: {"parsed":"Resource content"}"
 #### Iteration and Flattening Methods
 - `iter()`: Returns an iterator over the potentially contained value.
 - `flatten()`: Flattens a nested `Result` if the contained value is itself a `Result`.
+
+#### Transpose and Conversion Methods
+- `transpose()`: Transposes a `Result<Option<T>, E>` into an `Option<Result<T, E>>`.
+- `toAsync()`: Converts the Result to a ResultAsync for async chaining.
+
+### ResultAsync
+
+A wrapper around `Promise<Result<T, E>>` that enables fluent async/await chains.
+
+#### Constructors
+- `ResultAsync.ok<T, E>(value: T)`: Creates a successful ResultAsync.
+- `ResultAsync.err<T, E>(error: E)`: Creates a failed ResultAsync.
+- `ResultAsync.fromResult(result: Result<T, E> | Promise<Result<T, E>>)`: Wraps a sync or async Result.
+- `ResultAsync.fromPromise<T, E>(promise: Promise<T>, mapErr?: (e: unknown) => E)`: Converts a Promise to ResultAsync.
+- `ResultAsync.try<T>(fn: () => T | Promise<T>)`: Executes a function and catches any errors.
+
+#### Transformation Methods
+- `map<U>(fn: (value: T) => U | Promise<U>)`: Transforms the Ok value.
+- `mapErr<U>(fn: (error: E) => U | Promise<U>)`: Transforms the Err value.
+- `mapOr<U>(defaultValue: U, fn: (value: T) => U | Promise<U>)`: Maps or returns default.
+- `mapOrElse<U>(defaultFn: (error: E) => U, fn: (value: T) => U)`: Maps or computes default.
+
+#### Chaining Methods
+- `andThen<U>(fn: (value: T) => Result<U, E> | ResultAsync<U, E>)`: Chains on success.
+- `orElse<U>(fn: (error: E) => Result<T, U> | ResultAsync<T, U>)`: Recovers from error.
+- `and<U>(other: ResultAsync<U, E>)`: Returns other if Ok.
+- `or<U>(other: ResultAsync<T, U>)`: Returns other if Err.
+
+#### Unwrapping Methods
+- `unwrap()`: Returns value or throws.
+- `unwrapOr(defaultValue: T)`: Returns value or default.
+- `unwrapOrElse(fn: (error: E) => T)`: Returns value or computes from error.
+- `expect(message: string)`: Returns value or throws with message.
+
+#### Inspection Methods
+- `inspect(fn: (value: T) => void)`: Inspects Ok value.
+- `inspectErr(fn: (error: E) => void)`: Inspects Err value.
+- `isOk()`: Async check if Ok.
+- `isErr()`: Async check if Err.
+
+#### Static Combinators
+- `ResultAsync.all<T, E>(results: ResultAsync<T, E>[])`: Combines all, short-circuits on first error.
+- `ResultAsync.allSettled<T, E>(results: ResultAsync<T, E>[])`: Collects all errors.
+
+#### Pattern Matching
+- `match<U>({ Ok, Err })`: Pattern match with handlers.
+
+### OptionAsync
+
+A wrapper around `Promise<Option<T>>` that enables fluent async/await chains.
+
+#### Constructors
+- `OptionAsync.some<T>(value: T)`: Creates an OptionAsync with a value.
+- `OptionAsync.none<T>()`: Creates an empty OptionAsync.
+- `OptionAsync.fromOption(option: Option<T> | Promise<Option<T>>)`: Wraps a sync or async Option.
+- `OptionAsync.fromPromise<T>(promise: Promise<T>)`: Converts resolved to Some, rejected to None.
+- `OptionAsync.fromNullable<T>(value: T | null | undefined)`: Creates from nullable value.
+- `OptionAsync.try<T>(fn: () => T | Promise<T>)`: Executes and returns Some on success, None on error.
+
+#### Transformation Methods
+- `map<U>(fn: (value: T) => U | Promise<U>)`: Transforms the Some value.
+- `mapOr<U>(defaultValue: U, fn: (value: T) => U | Promise<U>)`: Maps or returns default.
+- `mapOrElse<U>(defaultFn: () => U, fn: (value: T) => U)`: Maps or computes default.
+- `filter(predicate: (value: T) => boolean | Promise<boolean>)`: Filters the Option.
+
+#### Chaining Methods
+- `andThen<U>(fn: (value: T) => Option<U> | OptionAsync<U>)`: Chains on Some.
+- `orElse<U>(fn: () => Option<T> | OptionAsync<T>)`: Provides fallback on None.
+- `and<U>(other: OptionAsync<U>)`: Returns other if Some.
+- `or(other: OptionAsync<T>)`: Returns other if None.
+
+#### Unwrapping Methods
+- `unwrap()`: Returns value or throws.
+- `unwrapOr(defaultValue: T)`: Returns value or default.
+- `unwrapOrElse(fn: () => T)`: Returns value or computes default.
+- `expect(message: string)`: Returns value or throws with message.
+
+#### Conversion Methods
+- `flatten()`: Flattens nested Option.
+- `zip<U>(other: OptionAsync<U>)`: Combines two Options into tuple.
+- `zipWith<U, R>(other: OptionAsync<U>, fn: (a: T, b: U) => R)`: Combines with function.
+
+#### Static Combinators
+- `OptionAsync.all<T>(options: OptionAsync<T>[])`: Combines all, returns None if any is None.
+
+#### Pattern Matching
+- `match<U>({ Some, None })`: Pattern match with handlers.
 
 ## Contributing
 

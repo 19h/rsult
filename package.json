@@ -1,10 +1,10 @@
 {
     "name": "rsult",
-    "version": "1.4.0",
+    "version": "2.0.0",
     "description": "",
     "main": "dist/lib.js",
     "types": "dist/lib.d.ts",
-    "repository": "https://github.com/indicium-ag/rsult",
+    "repository": "https://github.com/19h/rsult",
     "scripts": {
         "test": "echo \"Error: no test specified\" && exit 1"
     },
@@ -12,9 +12,10 @@
     "author": "Kenan Sulayman <kenan@sly.mn>",
     "license": "MIT",
     "devDependencies": {
-        "@swc/core": "^1.4.12",
-        "@swc/jest": "^0.2.36",
-        "@types/jest": "^29.5.12",
-        "jest": "^29.7.0"
+        "@swc/core": "^1.15.7",
+        "@swc/jest": "^0.2.39",
+        "@types/jest": "^30.0.0",
+        "jest": "^30.2.0",
+        "typescript": "^5.9.3"
     }
 }

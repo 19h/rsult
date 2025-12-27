@@ -442,4 +442,40 @@ describe('Result', () => {
             });
         });
     });
+
+    describe('New Rust-inspired Methods', () => {
+        describe('transpose', () => {
+            it('transposes Ok(Some(v)) to Some(Ok(v))', () => {
+                const { Some } = require('./option');
+                const result = Ok(Some(42));
+                const transposed = result.transpose();
+                expect(transposed.is_some()).toBe(true);
+                expect(transposed.unwrap().is_ok()).toBe(true);
+                expect(transposed.unwrap().unwrap()).toBe(42);
+            });
+
+            it('transposes Ok(None) to None', () => {
+                const { None } = require('./option');
+                const result = Ok(None());
+                const transposed = result.transpose();
+                expect(transposed.is_none()).toBe(true);
+            });
+
+            it('transposes Err(e) to Some(Err(e))', () => {
+                const result = Err('error') as Result<any, string>;
+                const transposed = result.transpose();
+                expect(transposed.is_some()).toBe(true);
+                expect(transposed.unwrap().is_err()).toBe(true);
+                expect(transposed.unwrap().unwrap_err()).toBe('error');
+            });
+
+            it('works with complex nested types', () => {
+                const { Some } = require('./option');
+                const result = Ok(Some({ id: 1, name: 'test' }));
+                const transposed = result.transpose();
+                expect(transposed.is_some()).toBe(true);
+                expect(transposed.unwrap().unwrap()).toEqual({ id: 1, name: 'test' });
+            });
+        });
+    });
 });
